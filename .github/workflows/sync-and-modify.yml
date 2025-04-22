@@ -1,0 +1,67 @@
+name: Sync and Modify Assets
+
+on:
+  schedule:
+    # Run every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  rebase-and-modify:
+    runs-on: ubuntu-latest
+
+    # Default permissions for GITHUB_TOKEN
+    permissions:
+      contents: write  # Allows pushing to the repository
+
+    steps:
+      - name: Checkout fork repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for rebase
+
+      - name: Configure git
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/TecharoHQ/anubis.git
+
+      - name: Fetch upstream
+        run: |
+          git fetch upstream
+
+      - name: Checkout main branch
+        run: |
+          git checkout main || git checkout master
+
+      - name: Rebase on upstream
+        run: |
+          git rebase upstream/main || git rebase upstream/master
+
+      - name: Replace all static webp assets with custom image
+        run: |
+          CUSTOM_IMAGE=$(find ./custom-assets -name "*.webp" -type f | head -n 1)
+
+          if [ ! -z "$CUSTOM_IMAGE" ] && [ -f "$CUSTOM_IMAGE" ]; then
+            echo "Found custom image: $CUSTOM_IMAGE"
+
+            find ./web/static/img -name "*.webp" -type f | while read -r file; do
+              echo "Replacing $file with custom image"
+              cp "$CUSTOM_IMAGE" "$file"
+            done
+          else
+            echo "No custom webp image found in custom-assets directory"
+            exit 1
+          fi
+
+      - name: Commit changes
+        run: |
+          git add ./web/static/img/*.webp
+          git commit -m "Update static assets with custom image" || echo "No changes to commit"
+
+      - name: Force push to fork
+        run: |
+          git push --force origin main || git push --force origin master
